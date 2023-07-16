@@ -1,0 +1,940 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!DOCTYPE nta PUBLIC '-//Uppaal Team//DTD Flat System 1.1//EN' 'http://www.it.uu.se/research/group/darts/uppaal/flat-1_2.dtd'>
+<nta>
+	<declaration>// CONSTANTS OF THE SYSTEM
+// IF YOU WANT TO EDIT IT
+// PLEASE MODIFY ALSO THE TOPOLOGY
+
+// Keep in mind that by increasing the topological complexity of the system, you might cause 
+// the explosion of the problem's state space, making it impossible to verify the "Always" propositions.
+
+
+//TRY to change it - 3,4 still possible, 5 in hours?
+const int NUM_PIECES = 3;
+
+
+const int NUM_SEGMENTS = 5;                   // number of conveyor belt segments in the system
+
+//MODIFY BOTH CONSISTENTLY
+const int SEGMENT_LENGTH[NUM_SEGMENTS] = {4,4,4,4,4}; // number of slots in each conveyor belt segment
+const int MAX_SEGMENT_LENGTH = 9; // upper bound on segment length
+
+//MODIFY CONSISTENTLY
+const int MAX_QUEUE_BUFFER = 8; //upper bound on the buffer of each queue
+const int INITIAL_QUEUE_BUFFER[MAX_QUEUE_BUFFER]  = {-1,-1,-1,-1,-1,-1,-1,-1}; // -1 == free space
+const int MAX_QUEUE_LEN[NUM_SEGMENTS] = {2,3,3,4,4};    // maximum length of the queue allowed by each station
+                                                  // 0 if there is no queue
+
+// STATIONS PROCESSING TIMES
+const int PROCESSING_TIME[NUM_SEGMENTS] = {2, 2,3,4,5};
+const int PIECE_SPEED = 1;                // speed of the pieces on the conveyor belt (in slots per time unit)
+
+// UPDATE POLICY: 0 - No Policy
+// see the documentation for a proof-of-concept 
+// of more policies
+const int policy = 0;
+
+//helps limiting the state space
+typedef int [-1, 2*MAX_SEGMENT_LENGTH] limited_int; 
+
+//other usefull limitation
+typedef int[0, NUM_PIECES-1] piece;
+typedef int[0, NUM_SEGMENTS-1] segment;
+typedef int[0, NUM_SEGMENTS-1] queue;
+typedef int[0, NUM_SEGMENTS-1] station;
+
+
+// channels of communication
+chan free[NUM_SEGMENTS];
+chan full[NUM_SEGMENTS];
+chan onTop[NUM_SEGMENTS];
+chan yes[NUM_SEGMENTS];
+chan no[NUM_SEGMENTS];
+chan addToQueue[NUM_SEGMENTS];
+chan removeFromQueue[NUM_SEGMENTS];
+chan work[NUM_SEGMENTS];
+chan isPiece[NUM_PIECES];
+chan move[NUM_PIECES];
+chan localize[NUM_PIECES];
+
+// temporary global variables
+// used by conveyor belt
+// to phisically move pieces
+limited_int  cur_id;
+limited_int  cur_queue;
+limited_int  cur_station;
+limited_int cur_segment;
+limited_int cur_slot;
+
+
+
+
+
+
+
+
+
+
+
+</declaration>
+	<template>
+		<name>ConveyorBelt</name>
+		<declaration>clock x;
+limited_int i = 0;
+limited_int currentPiece = 0;
+
+limited_int backup_cur_id;
+limited_int backup_cur_segment;
+limited_int backup_cur_slot;
+
+
+
+bool isInQueue(){
+if(cur_queue == -1){
+    return false;
+    }
+    return true;
+}
+
+bool isInStation(){
+if(cur_station == -1){
+    return false;
+    }
+    return true;
+}
+
+bool isInSegment(){
+if(cur_segment == -1){
+    return false;
+    }
+    return true;
+}
+
+//Modular arithmetic has to be keeped in mind
+void putToNextSegment(){
+    if(cur_station == NUM_SEGMENTS - 1){
+    cur_segment = 0;
+    cur_slot = 0;
+    cur_station = -1;
+    }
+    else{ 
+    cur_segment = cur_station + 1;
+    cur_slot = 0;
+    cur_station = -1;
+    }
+}
+
+void mergeContiguousSegments(){
+    //unisci segmenti contigui e trattali come unico segmento 
+    if(backup_cur_segment == cur_segment - 1 ||  (backup_cur_segment == NUM_SEGMENTS -1 &amp;&amp; cur_segment == 0) ){
+        cur_segment = backup_cur_segment;
+        cur_slot = backup_cur_slot + cur_slot + 1;
+    }
+}
+
+// Analisi dello spazio tra due pezzi
+bool noPiecesInBetween(){
+    // same piece is analyzed -- ignore
+    if(cur_id == backup_cur_id){
+    return true;
+    }
+
+    // just ignore the piece, is not in a slot
+    if(cur_slot == -1){
+        return true;
+    }
+    
+    // segmenti diversi e non contigui non hanno pezzi in mezzo
+    if(cur_segment != backup_cur_segment){
+    return true;
+    }
+    
+    // il pezzo 'sta dietro' rispetto al pezzo preso in analisi
+    if(backup_cur_slot &gt; cur_slot ){
+    return true;
+    }
+
+    // il pezzo 'sta avanti' al nostro pezzo, potrebbe essere un problema
+    if(backup_cur_slot &lt; cur_slot ){
+        if(cur_slot - backup_cur_slot &gt; PIECE_SPEED){
+            return true;
+        }
+    }
+    return false;
+}
+
+bool piecesInBetween(){
+    return (!noPiecesInBetween());
+}
+
+
+void updatePolicy(){
+if (policy == 0){
+    if (cur_segment == NUM_SEGMENTS-1){
+            cur_segment = 0;
+        }
+        else{
+        cur_segment = cur_segment + 1;
+        }
+    cur_slot = 0;
+    }
+}
+
+
+
+</declaration>
+		<location id="id0" x="-7887" y="-7394">
+			<name x="-7905" y="-7377">STEP_TIME</name>
+		</location>
+		<location id="id1" x="-7624" y="-7394">
+			<name x="-7709" y="-7428">STEP_TIME_PASSED</name>
+			<label kind="invariant" x="-7634" y="-7377">x&lt;1</label>
+		</location>
+		<location id="id2" x="-7462" y="-7394">
+			<name x="-7436" y="-7411">MOVE_PIECES</name>
+			<committed/>
+		</location>
+		<location id="id3" x="-7462" y="-7207">
+			<name x="-7556" y="-7216">WHERE_IS</name>
+			<committed/>
+		</location>
+		<location id="id4" x="-7462" y="-7054">
+			<name x="-7564" y="-7063">LOCALIZED</name>
+			<committed/>
+		</location>
+		<location id="id5" x="-7318" y="-7139">
+			<name x="-7411" y="-7165">IN_STATION</name>
+			<committed/>
+		</location>
+		<location id="id6" x="-7207" y="-7088">
+			<name x="-7233" y="-7122">IN_QUEUE</name>
+			<committed/>
+		</location>
+		<location id="id7" x="-7216" y="-6969">
+			<name x="-7233" y="-7011">IN_SEGMENT</name>
+			<committed/>
+		</location>
+		<location id="id8" x="-6876" y="-6969">
+			<name x="-6936" y="-7003">IS_LAST</name>
+			<committed/>
+		</location>
+		<location id="id9" x="-6621" y="-6969">
+			<name x="-6749" y="-6961">QUEUE_FULL_CHECK</name>
+			<committed/>
+		</location>
+		<location id="id10" x="-6502" y="-7054">
+			<name x="-6485" y="-7063">FULL</name>
+			<committed/>
+		</location>
+		<location id="id11" x="-6502" y="-6927">
+			<name x="-6512" y="-6961">NOT_FULL</name>
+			<committed/>
+		</location>
+		<location id="id12" x="-6281" y="-6927">
+			<name x="-6255" y="-6935">UPDATE_PIECE_INFO</name>
+			<committed/>
+		</location>
+		<location id="id13" x="-6281" y="-7122">
+			<committed/>
+		</location>
+		<location id="id14" x="-6289" y="-7335">
+			<name x="-6264" y="-7343">UPDATED_INFO</name>
+			<committed/>
+		</location>
+		<location id="id15" x="-6969" y="-7088">
+			<name x="-7105" y="-7131">TOP_QUEUE_CHECK</name>
+			<committed/>
+		</location>
+		<location id="id16" x="-6910" y="-7174">
+			<name x="-7020" y="-7182">TOP_QUEUE</name>
+			<committed/>
+		</location>
+		<location id="id17" x="-6800" y="-7190">
+			<name x="-6817" y="-7173">NOT_TOP</name>
+			<committed/>
+		</location>
+		<location id="id18" x="-6816" y="-7233">
+			<name x="-6969" y="-7250">STATION_STATUS</name>
+			<committed/>
+		</location>
+		<location id="id19" x="-6646" y="-7318">
+			<name x="-6706" y="-7301">STATION_WORKING</name>
+			<committed/>
+		</location>
+		<location id="id20" x="-6740" y="-7309">
+			<name x="-6868" y="-7326">STATION_FREE</name>
+			<committed/>
+		</location>
+		<location id="id21" x="-6578" y="-7573">
+			<committed/>
+		</location>
+		<location id="id22" x="-7241" y="-7207">
+			<name x="-7385" y="-7216">STATION_CHECK</name>
+			<committed/>
+		</location>
+		<location id="id23" x="-6944" y="-7309">
+			<name x="-7072" y="-7326">STILL_WORKING</name>
+			<committed/>
+		</location>
+		<location id="id24" x="-7156" y="-7275">
+			<name x="-7216" y="-7284">FREE</name>
+			<committed/>
+		</location>
+		<location id="id25" x="-7208" y="-6723">
+			<name x="-7259" y="-6706">IS_NOT_LAST</name>
+			<committed/>
+		</location>
+		<location id="id26" x="-6672" y="-6723">
+			<name x="-6748" y="-6765">NOT_OUTOFBOUND</name>
+			<committed/>
+		</location>
+		<location id="id27" x="-6664" y="-6655">
+			<committed/>
+		</location>
+		<location id="id28" x="-6664" y="-6570">
+			<committed/>
+		</location>
+		<location id="id29" x="-6663" y="-6519">
+			<name x="-6723" y="-6502">MERGE_CONTIGUOUS</name>
+			<committed/>
+		</location>
+		<location id="id30" x="-6051" y="-6485">
+			<name x="-6128" y="-6468">NO_PIECES_IN_BETWEEN</name>
+			<committed/>
+		</location>
+		<location id="id31" x="-6740" y="-7573">
+			<committed/>
+		</location>
+		<location id="id32" x="-6655" y="-6825">
+			<name x="-6706" y="-6808">UPDATE_POLICY</name>
+			<committed/>
+		</location>
+		<location id="id33" x="-6987" y="-6595">
+			<name x="-7131" y="-6629">CHECK_PIECES_BETWEEN</name>
+			<committed/>
+		</location>
+		<init ref="id0"/>
+		<transition>
+			<source ref="id33"/>
+			<target ref="id2"/>
+			<label kind="guard" x="-7759" y="-6633">piecesInBetween()</label>
+			<label kind="assignment" x="-7759" y="-6599">currentPiece++</label>
+			<nail x="-7777" y="-6604"/>
+			<nail x="-7769" y="-7343"/>
+			<nail x="-7531" y="-7343"/>
+		</transition>
+		<transition>
+			<source ref="id33"/>
+			<target ref="id27"/>
+			<label kind="guard" x="-6876" y="-6663">noPiecesInBetween()</label>
+			<label kind="assignment" x="-6876" y="-6680">i++</label>
+		</transition>
+		<transition>
+			<source ref="id29"/>
+			<target ref="id33"/>
+			<label kind="assignment" x="-6936" y="-6536">mergeContiguousSegments()</label>
+		</transition>
+		<transition>
+			<source ref="id32"/>
+			<target ref="id12"/>
+			<label kind="assignment" x="-6494" y="-6816">updatePolicy()</label>
+			<nail x="-6341" y="-6825"/>
+			<nail x="-6281" y="-6825"/>
+		</transition>
+		<transition>
+			<source ref="id8"/>
+			<target ref="id32"/>
+			<label kind="guard" x="-6970" y="-6884">MAX_QUEUE_LEN[cur_segment]==0</label>
+		</transition>
+		<transition>
+			<source ref="id31"/>
+			<target ref="id21"/>
+			<label kind="synchronisation" x="-6706" y="-7607">work[cur_queue]!</label>
+		</transition>
+		<transition>
+			<source ref="id20"/>
+			<target ref="id31"/>
+			<label kind="guard" x="-6995" y="-7539">MAX_QUEUE_LEN[cur_queue] != 0</label>
+			<label kind="synchronisation" x="-6952" y="-7556">removeFromQueue[cur_queue]!</label>
+		</transition>
+		<transition>
+			<source ref="id30"/>
+			<target ref="id12"/>
+			<label kind="assignment" x="-6264" y="-6689">cur_slot = cur_slot + PIECE_SPEED</label>
+			<nail x="-6051" y="-6664"/>
+			<nail x="-6281" y="-6664"/>
+		</transition>
+		<transition>
+			<source ref="id27"/>
+			<target ref="id30"/>
+			<label kind="guard" x="-6315" y="-6587">i &gt;= NUM_PIECES</label>
+			<label kind="assignment" x="-6383" y="-6528">cur_id = backup_cur_id,
+cur_segment = backup_cur_segment,
+cur_slot = backup_cur_slot</label>
+		</transition>
+		<transition>
+			<source ref="id28"/>
+			<target ref="id29"/>
+			<label kind="synchronisation" x="-6732" y="-6561">localize[i]!</label>
+		</transition>
+		<transition>
+			<source ref="id27"/>
+			<target ref="id28"/>
+			<label kind="guard" x="-6791" y="-6604">i &lt; NUM_PIECES</label>
+			<label kind="synchronisation" x="-6740" y="-6621">isPiece[i]!</label>
+		</transition>
+		<transition>
+			<source ref="id26"/>
+			<target ref="id27"/>
+			<label kind="assignment" x="-6647" y="-6740">i:=0,
+backup_cur_id=cur_id,
+backup_cur_segment = cur_segment,
+backup_cur_slot = cur_slot</label>
+		</transition>
+		<transition>
+			<source ref="id25"/>
+			<target ref="id26"/>
+			<label kind="guard" x="-7199" y="-6842">cur_slot + PIECE_SPEED &lt; SEGMENT_LENGTH[cur_segment]</label>
+		</transition>
+		<transition>
+			<source ref="id25"/>
+			<target ref="id2"/>
+			<label kind="guard" x="-7683" y="-6842">cur_slot + PIECE_SPEED &gt;= SEGMENT_LENGTH[cur_segment]</label>
+			<label kind="assignment" x="-7674" y="-6817">currentPiece++</label>
+			<nail x="-7692" y="-6723"/>
+			<nail x="-7692" y="-7335"/>
+			<nail x="-7505" y="-7335"/>
+		</transition>
+		<transition>
+			<source ref="id7"/>
+			<target ref="id25"/>
+			<label kind="guard" x="-7547" y="-6910">cur_slot != SEGMENT_LENGTH[cur_segment]-1</label>
+		</transition>
+		<transition>
+			<source ref="id24"/>
+			<target ref="id12"/>
+			<label kind="assignment" x="-7138" y="-7649">putToNextSegment()</label>
+			<nail x="-7156" y="-7649"/>
+			<nail x="-6000" y="-7649"/>
+			<nail x="-5992" y="-6774"/>
+			<nail x="-6281" y="-6774"/>
+		</transition>
+		<transition>
+			<source ref="id23"/>
+			<target ref="id2"/>
+			<label kind="assignment" x="-7386" y="-7377">currentPiece++</label>
+			<nail x="-6944" y="-7352"/>
+			<nail x="-7403" y="-7360"/>
+		</transition>
+		<transition>
+			<source ref="id22"/>
+			<target ref="id24"/>
+			<label kind="synchronisation" x="-7309" y="-7267">yes[cur_station]?</label>
+		</transition>
+		<transition>
+			<source ref="id22"/>
+			<target ref="id23"/>
+			<label kind="synchronisation" x="-7122" y="-7250">no[cur_station]?</label>
+		</transition>
+		<transition>
+			<source ref="id5"/>
+			<target ref="id22"/>
+			<label kind="synchronisation" x="-7403" y="-7190">free[cur_station]!</label>
+		</transition>
+		<transition>
+			<source ref="id21"/>
+			<target ref="id12"/>
+			<label kind="assignment" x="-6544" y="-7649">cur_station=cur_queue,
+cur_queue=-1,
+cur_segment=-1,
+cur_slot = -1</label>
+			<nail x="-6060" y="-7564"/>
+			<nail x="-6043" y="-6808"/>
+			<nail x="-6281" y="-6808"/>
+		</transition>
+		<transition>
+			<source ref="id19"/>
+			<target ref="id2"/>
+			<label kind="assignment" x="-6935" y="-7377">currentPiece++</label>
+			<nail x="-6646" y="-7377"/>
+		</transition>
+		<transition>
+			<source ref="id18"/>
+			<target ref="id19"/>
+			<label kind="synchronisation" x="-6757" y="-7250">no[cur_queue]?</label>
+		</transition>
+		<transition>
+			<source ref="id18"/>
+			<target ref="id20"/>
+			<label kind="synchronisation" x="-6901" y="-7292">yes[cur_queue]?</label>
+		</transition>
+		<transition>
+			<source ref="id16"/>
+			<target ref="id18"/>
+			<label kind="synchronisation" x="-6978" y="-7224">free[cur_queue]!</label>
+		</transition>
+		<transition>
+			<source ref="id17"/>
+			<target ref="id2"/>
+			<label kind="assignment" x="-6918" y="-7411">currentPiece++</label>
+			<nail x="-6570" y="-7190"/>
+			<nail x="-6570" y="-7411"/>
+			<nail x="-7403" y="-7420"/>
+		</transition>
+		<transition>
+			<source ref="id15"/>
+			<target ref="id17"/>
+			<label kind="synchronisation" x="-6961" y="-7080">no[cur_queue]?</label>
+		</transition>
+		<transition>
+			<source ref="id15"/>
+			<target ref="id16"/>
+			<label kind="synchronisation" x="-7054" y="-7165">yes[cur_queue]?</label>
+		</transition>
+		<transition>
+			<source ref="id6"/>
+			<target ref="id15"/>
+			<label kind="synchronisation" x="-7139" y="-7114">onTop[cur_queue]!</label>
+		</transition>
+		<transition>
+			<source ref="id14"/>
+			<target ref="id2"/>
+			<label kind="assignment" x="-6918" y="-7505">currentPiece++</label>
+			<nail x="-6289" y="-7479"/>
+			<nail x="-7411" y="-7488"/>
+		</transition>
+		<transition>
+			<source ref="id13"/>
+			<target ref="id14"/>
+			<label kind="synchronisation" x="-6264" y="-7241">move[currentPiece]!</label>
+		</transition>
+		<transition>
+			<source ref="id12"/>
+			<target ref="id13"/>
+			<label kind="synchronisation" x="-6272" y="-7037">isPiece[currentPiece]!</label>
+		</transition>
+		<transition>
+			<source ref="id11"/>
+			<target ref="id12"/>
+			<label kind="synchronisation" x="-6485" y="-6944">addToQueue[cur_segment]!</label>
+			<label kind="assignment" x="-6485" y="-6918">cur_queue = cur_segment,
+cur_segment = -1,
+cur_slot = -1,
+cur_station = -1</label>
+		</transition>
+		<transition>
+			<source ref="id10"/>
+			<target ref="id2"/>
+			<label kind="assignment" x="-6918" y="-7462">currentPiece++</label>
+			<nail x="-6502" y="-7437"/>
+			<nail x="-7420" y="-7445"/>
+		</transition>
+		<transition>
+			<source ref="id9"/>
+			<target ref="id11"/>
+			<label kind="synchronisation" x="-6630" y="-6935">no[cur_segment]?</label>
+		</transition>
+		<transition>
+			<source ref="id9"/>
+			<target ref="id10"/>
+			<label kind="synchronisation" x="-6681" y="-7037">yes[cur_segment]?</label>
+		</transition>
+		<transition>
+			<source ref="id8"/>
+			<target ref="id9"/>
+			<label kind="guard" x="-6859" y="-6995">MAX_QUEUE_LEN[cur_segment]&gt;0</label>
+			<label kind="synchronisation" x="-6859" y="-7012">full[cur_segment]!</label>
+		</transition>
+		<transition>
+			<source ref="id7"/>
+			<target ref="id8"/>
+			<label kind="guard" x="-7208" y="-6961">cur_slot == SEGMENT_LENGTH[cur_segment]-1</label>
+		</transition>
+		<transition>
+			<source ref="id4"/>
+			<target ref="id7"/>
+			<label kind="guard" x="-7343" y="-7028">isInSegment()</label>
+		</transition>
+		<transition>
+			<source ref="id4"/>
+			<target ref="id6"/>
+			<label kind="guard" x="-7343" y="-7105">isInQueue()</label>
+		</transition>
+		<transition>
+			<source ref="id4"/>
+			<target ref="id5"/>
+			<label kind="guard" x="-7437" y="-7131">isInStation()</label>
+		</transition>
+		<transition>
+			<source ref="id3"/>
+			<target ref="id4"/>
+			<label kind="synchronisation" x="-7606" y="-7148">localize[currentPiece]!</label>
+		</transition>
+		<transition>
+			<source ref="id2"/>
+			<target ref="id3"/>
+			<label kind="guard" x="-7453" y="-7318">currentPiece&lt;NUM_PIECES</label>
+			<label kind="synchronisation" x="-7606" y="-7318">isPiece[currentPiece]!</label>
+		</transition>
+		<transition>
+			<source ref="id2"/>
+			<target ref="id0"/>
+			<label kind="guard" x="-7802" y="-7555">currentPiece == NUM_PIECES</label>
+			<nail x="-7462" y="-7521"/>
+			<nail x="-7887" y="-7522"/>
+		</transition>
+		<transition>
+			<source ref="id1"/>
+			<target ref="id2"/>
+		</transition>
+		<transition>
+			<source ref="id0"/>
+			<target ref="id1"/>
+			<label kind="assignment" x="-7837" y="-7394">x := 0, currentPiece := 0</label>
+		</transition>
+	</template>
+	<template>
+		<name>Piece</name>
+		<parameter>const piece id</parameter>
+		<declaration>// Pieces can be or in the queue or in the station or in a segment
+// -1 == is not here
+// initially they are on segment0
+limited_int myqueue = -1;
+limited_int mystation = -1;
+limited_int mysegment = 0;
+// if are in a segment then they have also a slot
+limited_int myslot = SEGMENT_LENGTH[0]-1-id;
+
+void setLocation(){
+myqueue = cur_queue;
+mystation = cur_station;
+mysegment = cur_segment;
+myslot = cur_slot;
+}
+
+void getLocation(){
+cur_queue = myqueue;
+cur_station = mystation;
+cur_segment = mysegment;
+cur_slot = myslot;
+cur_id = id;
+}
+
+bool isInStation(){
+    if(mystation == -1){
+    return false;
+    }
+    else
+    return false;
+}
+
+bool isInSegment(){
+    if(mysegment == -1){
+    return false;
+    }
+    else
+    return false;
+}
+
+
+
+
+</declaration>
+		<location id="id34" x="-297" y="-68">
+			<name x="-408" y="-76">PieceLocation</name>
+		</location>
+		<location id="id35" x="-25" y="-68">
+			<name x="-8" y="-76">PieceEvent</name>
+		</location>
+		<init ref="id34"/>
+		<transition>
+			<source ref="id35"/>
+			<target ref="id34"/>
+			<label kind="synchronisation" x="-187" y="85">localize[id]?</label>
+			<label kind="assignment" x="-195" y="102">getLocation()</label>
+			<nail x="-25" y="85"/>
+			<nail x="-297" y="76"/>
+		</transition>
+		<transition>
+			<source ref="id35"/>
+			<target ref="id34"/>
+			<label kind="synchronisation" x="-204" y="-246">move[id]?</label>
+			<label kind="assignment" x="-212" y="-221">setLocation()</label>
+			<nail x="-25" y="-221"/>
+			<nail x="-314" y="-221"/>
+		</transition>
+		<transition>
+			<source ref="id34"/>
+			<target ref="id35"/>
+			<label kind="synchronisation" x="-204" y="-93">isPiece[id]?</label>
+		</transition>
+	</template>
+	<template>
+		<name>LaserSensors</name>
+		<parameter>const queue id</parameter>
+		<declaration>int capacity = MAX_QUEUE_LEN[id];
+int occupied=0;
+int i = 0;
+
+int queueBuffer[MAX_QUEUE_BUFFER] = INITIAL_QUEUE_BUFFER;
+
+
+void add(){
+queueBuffer[occupied] = cur_id;
+occupied++;
+}
+
+void remove(){
+for(i=0; i&lt;MAX_QUEUE_BUFFER-1; i++){
+    queueBuffer[i] = queueBuffer[i+1];
+    if (i&gt;=occupied) {
+        queueBuffer[i] = -1;
+        }
+}
+occupied--;
+}
+
+int isInBuffer(){
+for(i=0; i&lt;occupied; i++){
+    if(cur_id == queueBuffer[i]){
+    return i;
+  }
+ }
+return -1;
+}
+
+bool isTopOfTheQueue(){
+    if(queueBuffer[0] == cur_id){
+    return true;
+    }
+    return false;
+}
+
+
+
+</declaration>
+		<location id="id36" x="-22626" y="-22694">
+			<name x="-22728" y="-22720">NOT_FULL</name>
+		</location>
+		<location id="id37" x="-22635" y="-22431">
+			<name x="-22652" y="-22465">FULL</name>
+		</location>
+		<location id="id38" x="-22414" y="-22881">
+			<name x="-22424" y="-22915">NOTIFY_NOT_FULL</name>
+			<committed/>
+		</location>
+		<location id="id39" x="-22456" y="-22397">
+			<name x="-22431" y="-22406">NOTIFY_FULL</name>
+			<committed/>
+		</location>
+		<location id="id40" x="-22244" y="-22635">
+			<name x="-22271" y="-22678">CHECK_FULL</name>
+			<committed/>
+		</location>
+		<location id="id41" x="-22881" y="-22881">
+			<name x="-22941" y="-22924">NOT_FULL_CHECK_TOP</name>
+			<committed/>
+		</location>
+		<location id="id42" x="-22975" y="-22423">
+			<name x="-23009" y="-22466">FULL_CHECK_TOP</name>
+			<committed/>
+		</location>
+		<init ref="id36"/>
+		<transition>
+			<source ref="id42"/>
+			<target ref="id37"/>
+			<label kind="guard" x="-23263" y="-22414">isTopOfTheQueue()</label>
+			<label kind="synchronisation" x="-23186" y="-22389">yes[id]!</label>
+			<nail x="-23128" y="-22431"/>
+			<nail x="-23136" y="-22295"/>
+			<nail x="-22634" y="-22295"/>
+		</transition>
+		<transition>
+			<source ref="id42"/>
+			<target ref="id37"/>
+			<label kind="guard" x="-22873" y="-22406">!isTopOfTheQueue()</label>
+			<label kind="synchronisation" x="-22822" y="-22389">no[id]!</label>
+			<nail x="-22975" y="-22363"/>
+			<nail x="-22635" y="-22363"/>
+		</transition>
+		<transition>
+			<source ref="id37"/>
+			<target ref="id42"/>
+			<label kind="synchronisation" x="-22839" y="-22474">onTop[id]?</label>
+		</transition>
+		<transition>
+			<source ref="id41"/>
+			<target ref="id36"/>
+			<label kind="guard" x="-23094" y="-22881">isTopOfTheQueue()</label>
+			<label kind="synchronisation" x="-23101" y="-22898">yes[id]!</label>
+			<nail x="-23119" y="-22881"/>
+			<nail x="-23119" y="-22796"/>
+			<nail x="-22737" y="-22796"/>
+		</transition>
+		<transition>
+			<source ref="id41"/>
+			<target ref="id36"/>
+			<label kind="guard" x="-22863" y="-22864">!isTopOfTheQueue()</label>
+			<label kind="synchronisation" x="-22863" y="-22847">no[id]!</label>
+			<nail x="-22881" y="-22830"/>
+			<nail x="-22703" y="-22830"/>
+		</transition>
+		<transition>
+			<source ref="id36"/>
+			<target ref="id41"/>
+			<label kind="synchronisation" x="-22771" y="-22907">onTop[id]?</label>
+			<nail x="-22677" y="-22881"/>
+		</transition>
+		<transition>
+			<source ref="id40"/>
+			<target ref="id36"/>
+			<label kind="guard" x="-22584" y="-22601">occupied &lt; capacity</label>
+			<nail x="-22567" y="-22601"/>
+		</transition>
+		<transition>
+			<source ref="id40"/>
+			<target ref="id37"/>
+			<label kind="guard" x="-22371" y="-22567">occupied == capacity</label>
+		</transition>
+		<transition>
+			<source ref="id36"/>
+			<target ref="id40"/>
+			<label kind="guard" x="-22448" y="-22703">occupied &lt; capacity</label>
+			<label kind="synchronisation" x="-22465" y="-22720">addToQueue[id]?</label>
+			<label kind="assignment" x="-22397" y="-22686">add()</label>
+		</transition>
+		<transition>
+			<source ref="id39"/>
+			<target ref="id37"/>
+			<label kind="synchronisation" x="-22490" y="-22508">yes[id]!</label>
+			<nail x="-22465" y="-22482"/>
+		</transition>
+		<transition>
+			<source ref="id37"/>
+			<target ref="id39"/>
+			<label kind="synchronisation" x="-22567" y="-22406">full[id]?</label>
+		</transition>
+		<transition>
+			<source ref="id38"/>
+			<target ref="id36"/>
+			<label kind="synchronisation" x="-22558" y="-22864">no[id]!</label>
+			<nail x="-22601" y="-22805"/>
+		</transition>
+		<transition>
+			<source ref="id36"/>
+			<target ref="id38"/>
+			<label kind="synchronisation" x="-22473" y="-22805">full[id]?</label>
+		</transition>
+		<transition>
+			<source ref="id37"/>
+			<target ref="id36"/>
+			<label kind="synchronisation" x="-22847" y="-22567">removeFromQueue[id]?</label>
+			<label kind="assignment" x="-22745" y="-22550">remove()</label>
+			<nail x="-22677" y="-22499"/>
+			<nail x="-22686" y="-22558"/>
+		</transition>
+		<transition>
+			<source ref="id36"/>
+			<target ref="id36"/>
+			<label kind="guard" x="-23111" y="-22694">occupied &gt;0</label>
+			<label kind="synchronisation" x="-23170" y="-22711">removeFromQueue[id]?</label>
+			<label kind="assignment" x="-23085" y="-22677">remove()</label>
+			<nail x="-23009" y="-22694"/>
+			<nail x="-23009" y="-22669"/>
+			<nail x="-22771" y="-22669"/>
+		</transition>
+	</template>
+	<template>
+		<name>ProcessingStation</name>
+		<parameter>const station id</parameter>
+		<declaration>clock x;</declaration>
+		<location id="id43" x="-178" y="-34">
+			<name x="-238" y="-42">FREE</name>
+		</location>
+		<location id="id44" x="8" y="-34">
+			<name x="25" y="-42">WORKING</name>
+			<label kind="invariant" x="17" y="-59">x &lt; PROCESSING_TIME[id]</label>
+		</location>
+		<location id="id45" x="-187" y="110">
+			<name x="-238" y="127">NOTIFY_FREE</name>
+			<committed/>
+		</location>
+		<location id="id46" x="8" y="110">
+			<name x="-51" y="127">NOTIFY_WORKING</name>
+			<committed/>
+		</location>
+		<init ref="id43"/>
+		<transition>
+			<source ref="id46"/>
+			<target ref="id44"/>
+			<label kind="synchronisation" x="59" y="34">no[id]!</label>
+			<nail x="59" y="110"/>
+			<nail x="51" y="17"/>
+		</transition>
+		<transition>
+			<source ref="id45"/>
+			<target ref="id43"/>
+			<label kind="synchronisation" x="-144" y="25">yes[id]!</label>
+			<nail x="-153" y="110"/>
+			<nail x="-153" y="8"/>
+		</transition>
+		<transition>
+			<source ref="id44"/>
+			<target ref="id46"/>
+			<label kind="synchronisation" x="-51" y="25">free[id]?</label>
+		</transition>
+		<transition>
+			<source ref="id43"/>
+			<target ref="id45"/>
+			<label kind="synchronisation" x="-238" y="25">free[id]?</label>
+		</transition>
+		<transition>
+			<source ref="id44"/>
+			<target ref="id43"/>
+			<nail x="8" y="-85"/>
+			<nail x="-187" y="-85"/>
+		</transition>
+		<transition>
+			<source ref="id43"/>
+			<target ref="id44"/>
+			<label kind="synchronisation" x="-119" y="-59">work[id]?</label>
+			<label kind="assignment" x="-102" y="-34">x = 0</label>
+		</transition>
+	</template>
+	<system>
+system ConveyorBelt, Piece, ProcessingStation, LaserSensors;
+    </system>
+	<queries>
+		<query>
+			<formula></formula>
+			<comment></comment>
+		</query>
+		<query>
+			<formula>A[] forall (i : piece) forall (j : piece) ConveyorBelt.STEP_TIME &amp;&amp; Piece(i).isInSegment() &amp;&amp; Piece(j).isInSegment() &amp;&amp; Piece(i).mysegment == Piece(j).mysegment imply Piece(i).myslot != Piece(j).myslot</formula>
+			<comment></comment>
+		</query>
+		<query>
+			<formula>A[] forall (i : piece) forall (j : piece) ConveyorBelt.STEP_TIME &amp;&amp; Piece(i).isInStation() &amp;&amp; Piece(j).isInStation() imply Piece(i).mystation!=Piece(j).mystation</formula>
+			<comment>A station cannot be working on 2 pieces at the same time</comment>
+		</query>
+		<query>
+			<formula>A[] forall (i : queue) (LaserSensors(i).capacity &gt;= LaserSensors(i).occupied)</formula>
+			<comment>For all queues i, the capacity of LaserSensor(i) must be greater than or equal to the number of occupied slots in LaserSensor(i) at all times.
+
+This property ensures that there are no queues that are over capacity, i.e., having more pieces in the queue than the number of available slots in the corresponding LaserSensor.</comment>
+		</query>
+		<query>
+			<formula>E[] ConveyorBelt.MOVE_PIECES imply ConveyorBelt.STEP_TIME</formula>
+			<comment>if the ConveyorBelt is in the MOVE_PIECES state, then it will eventually move to the STEP_TIME state.
+this property checks if the ConveyorBelt is always able to move its pieces and eventually reach the STEP_TIME state.</comment>
+		</query>
+		<query>
+			<formula>A[] !deadlock</formula>
+			<comment>For all possible paths in the system, there is never a state where a deadlock is reached.</comment>
+		</query>
+		<query>
+			<formula>E[] forall(i:piece) ConveyorBelt.STEP_TIME imply Piece(i).PieceLocation</formula>
+			<comment>There exists a path in the system where for all pieces, if the ConveyorBelt keeps moving according to the STEP_TIME, then the location of the piece is tracked.</comment>
+		</query>
+	</queries>
+</nta>
